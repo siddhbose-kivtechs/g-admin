@@ -1,0 +1,803 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="UTF-8">
+ <meta name="viewport" content="width=device-width, initial-scale=1.0">
+ <title>Gemini API Admin Dashboard</title>
+ <style>
+ body {
+ font-family: Arial, sans-serif;
+ line-height: 1.6;
+ max-width: 1200px;
+ margin: 0 auto;
+ padding: 20px;
+ background-color: #f5f5f5;
+ }
+ h1, h2, h3 {
+ color: #333;
+ }
+ .card {
+ background: white;
+ border-radius: 8px;
+ padding: 20px;
+ margin-bottom: 20px;
+ box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+ }
+ .metrics {
+ display: flex;
+ gap: 20px;
+ flex-wrap: wrap;
+ }
+ .metric {
+ flex: 1;
+ min-width: 200px;
+ padding: 15px;
+ background: #f9f9f9;
+ border-radius: 8px;
+ text-align: center;
+ }
+ .metric h3 {
+ margin-top: 0;
+ }
+ .metric .value {
+ font-size: 24px;
+ font-weight: bold;
+ color: #2c7be5;
+ }
+ .progress-bar {
+ height: 20px;
+ background-color: #e9ecef;
+ border-radius: 5px;
+ margin: 10px 0;
+ overflow: hidden;
+ }
+ .progress {
+ height: 100%;
+ background-color: #2c7be5;
+ transition: width 0.5s;
+ }
+ table {
+ width: 100%;
+ border-collapse: collapse;
+ }
+ th, td {
+ padding: 12px;
+ text-align: left;
+ border-bottom: 1px solid #ddd;
+ }
+ th {
+ background-color: #f2f2f2;
+ }
+ tr:hover {
+ background-color: #f5f5f5;
+ }
+ .text-truncate {
+ max-width: 300px;
+ white-space: nowrap;
+ overflow: hidden;
+ text-overflow: ellipsis;
+ }
+ .chat-modal {
+ display: none;
+ position: fixed;
+ top: 0;
+ left: 0;
+ right: 0;
+ bottom: 0;
+ background: rgba(0,0,0,0.7);
+ z-index: 1000;
+ }
+ .modal-content {
+ position: relative;
+ background: white;
+ margin: 50px auto;
+ padding: 20px;
+ width: 80%;
+ max-width: 800px;
+ max-height: 80vh;
+ overflow-y: auto;
+ border-radius: 8px;
+ }
+ .close-modal {
+ position: absolute;
+ top: 10px;
+ right: 20px;
+ font-size: 24px;
+ cursor: pointer;
+ }
+ .btn {
+ padding: 8px 16px;
+ border: none;
+ border-radius: 4px;
+ cursor: pointer;
+ font-size: 14px;
+ margin-right: 5px;
+ }
+ .btn-primary {
+ background-color: #2c7be5;
+ color: white;
+ }
+ .btn-danger {
+ background-color: #e63757;
+ color: white;
+ }
+ pre {
+ background-color: #f8f9fa;
+ padding: 15px;
+ border-radius: 4px;
+ overflow-x: auto;
+ }
+ .debug-panel {
+ background-color: #f0f0f0;
+ border: 1px solid #ccc;
+ padding: 10px;
+ margin-bottom: 20px;
+ border-radius: 4px;
+ max-height: 200px;
+ overflow-y: auto;
+ font-family: monospace;
+ font-size: 12px;
+ }
+ .debug-entry {
+ margin: 2px 0;
+ padding: 2px 0;
+ border-bottom: 1px solid #ddd;
+ }
+ .error {
+ color: red;
+ }
+ .header {
+ display: flex;
+ justify-content: space-between;
+ align-items: center;
+ margin-bottom: 20px;
+ }
+ .server-info {
+ font-size: 14px;
+ color: #666;
+ }
+ .admin-controls {
+ margin-top: 20px;
+ padding-top: 20px;
+ border-top: 1px solid #eee;
+ }
+ .admin-controls input[type="number"] {
+ padding: 8px;
+ margin-right: 5px;
+ border: 1px solid #ccc;
+ border-radius: 4px;
+ width: 100px;
+ }
+ .connection-status {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 5px;
+ }
+ .status-connected {
+  background-color: #28a745;
+ }
+ .status-disconnected {
+  background-color: #dc3545;
+ }
+ .status-polling {
+  background-color: #ffc107;
+ }
+ </style>
+</head>
+<body>
+ <div class="header">
+ <h1>Gemini API Admin Dashboard</h1>
+ <div class="server-info" id="serverInfo">
+  <span class="connection-status" id="connectionStatus"></span>
+  Connecting to server...
+ </div>
+ </div>
+ 
+ <div id="debugPanel" class="debug-panel">
+ <div class="debug-entry">Debug logs will appear here...</div>
+ </div>
+ 
+ <div class="card">
+ <h2>Token Usage</h2>
+ <div class="metrics">
+ <div class="metric">
+ <h3>Total Tokens Used</h3>
+ <div class="value" id="totalTokens">Loading...</div>
+ </div>
+ <div class="metric">
+ <h3>Token Limit</h3>
+ <div class="value" id="tokenLimit">Loading...</div>
+ </div>
+ <div class="metric">
+ <h3>Remaining Tokens</h3>
+ <div class="value" id="remainingTokens">Loading...</div>
+ </div>
+ </div>
+ <div class="progress-bar">
+ <div class="progress" id="tokenProgress" style="width: 0%"></div>
+ </div>
+ <p id="tokenPercentage">Loading...</p>
+ 
+  <div class="admin-controls">
+ <h3>Extend Token Limit</h3>
+ <label for="extendAmount">Amount to add:</label>
+ <input type="number" id="extendAmount" value="1000" min="1" max="20000"> tokens (max 20,000 per request)
+ <button class="btn btn-primary" id="extendLimitBtn">Extend Limit</button>
+ <button class="btn btn-danger" id="clearDbBtn">Clear Database</button>
+ <p id="extendMessage" style="margin-top: 10px;"></p>
+ </div>
+ </div>
+
+ <div class="card">
+ <h2>Recent Chats</h2>
+ <table>
+ <thead>
+ <tr>
+ <th>Time</th>
+ <th>User Query</th>
+ <th>Response</th>
+ <th>Model</th>
+ <th>Tokens Used</th>
+ <th>Action</th>
+ </tr>
+ </thead>
+ <tbody id="chatHistory">
+ <tr>
+ <td colspan="6" style="text-align: center;">Loading...</td>
+ </tr>
+ </tbody>
+ </table>
+ </div>
+
+ <div class="chat-modal" id="chatModal">
+ <div class="modal-content">
+ <span class="close-modal" id="closeModal">&times;</span>
+ <h2>Chat Details</h2>
+ <div id="chatDetails"></div>
+ </div>
+ </div>
+
+<script>
+ // Define the base URL for all API calls
+ // const BASE_URL = 'http://localhost:8000';
+     const BASE_URL='https://gbot-backend.kneotech.cloud';
+ //const WS_URL = 'ws://localhost:8000';
+
+const WS_URL='ws://gbot-backend.kneotech.cloud';
+ const MAX_EXTENSION_AMOUNT = 20000;
+ 
+ // WebSocket variables
+ let socket = null;
+ let isWebSocketConnected = false;
+ const WEBSOCKET_RECONNECT_DELAY = 3000; // 3 seconds
+ const FALLBACK_POLLING_INTERVAL = 5000; // 5 seconds if WebSocket fails
+ let reconnectTimeout = null;
+ let recentChats = []; // Store chats data for modal view
+ 
+ // Debug logger function
+ function debug(message, isError = false) {
+   const panel = document.getElementById('debugPanel');
+   const entry = document.createElement('div');
+   entry.className = 'debug-entry' + (isError ? ' error' : '');
+   entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+   panel.appendChild(entry);
+   panel.scrollTop = panel.scrollHeight;
+   console.log(message);
+ }
+
+ // Initial log
+ debug(`Admin dashboard initializing... (Server: ${BASE_URL})`);
+
+ // Update connection status indicator
+ function updateConnectionStatus(state) {
+   const statusElement = document.getElementById('connectionStatus');
+   const serverInfoText = document.getElementById('serverInfo');
+   
+   statusElement.className = 'connection-status';
+   
+   if (state === 'connected') {
+     statusElement.classList.add('status-connected');
+     serverInfoText.innerHTML = `<span class="connection-status status-connected"></span>Server: ${BASE_URL} | Status: Connected (WebSocket) | ${new Date().toLocaleString()}`;
+   } else if (state === 'connecting') {
+     statusElement.classList.add('status-polling');
+     serverInfoText.innerHTML = `<span class="connection-status status-polling"></span>Server: ${BASE_URL} | Status: Connecting... | ${new Date().toLocaleString()}`;
+   } else {
+     statusElement.classList.add('status-disconnected');
+     serverInfoText.innerHTML = `<span class="connection-status status-disconnected"></span>Server: ${BASE_URL} | Status: Disconnected | ${new Date().toLocaleString()}`;
+     
+     // If we're disconnected and not already trying to reconnect
+     if (!reconnectTimeout) {
+       debug('WebSocket disconnected, will attempt reconnection...');
+       reconnectTimeout = setTimeout(connectWebSocket, WEBSOCKET_RECONNECT_DELAY);
+     }
+   }
+ }
+ 
+ // Connect to WebSocket
+ function connectWebSocket() {
+   if (reconnectTimeout) {
+     clearTimeout(reconnectTimeout);
+     reconnectTimeout = null;
+   }
+   
+   if (socket) {
+     socket.close();
+     socket = null;
+   }
+   
+   updateConnectionStatus('connecting');
+   debug('Attempting to connect to WebSocket...');
+   
+   try {
+     debug(`Connecting to WebSocket at ${WS_URL}`);
+     socket = new WebSocket(WS_URL);
+     
+     socket.onopen = function() {
+       isWebSocketConnected = true;
+       debug('WebSocket connected successfully');
+       updateConnectionStatus('connected');
+       
+       // Request initial data
+       requestUpdate();
+     };
+     
+     socket.onmessage = function(event) {
+       try {
+         const data = JSON.parse(event.data);
+         debug(`WebSocket message received: ${data.type}`);
+         
+         if (data.type === 'update') {
+           processUpdate(data);
+         } else if (data.type === 'extendLimitResponse') {
+           processExtendResponse(data);
+         } else if (data.type === 'clearDatabaseResponse') {
+           processClearDatabaseResponse(data);
+         } else if (data.type === 'welcome') {
+           debug(`Server welcome: ${data.message}. Connected clients: ${data.clientCount}`);
+         }
+       } catch (error) {
+         debug(`Error processing WebSocket message: ${error.message}`, true);
+       }
+     };
+     
+     socket.onclose = function(event) {
+       isWebSocketConnected = false;
+       debug(`WebSocket closed with code: ${event.code} ${event.reason || ''}`);
+       updateConnectionStatus('disconnected');
+       
+       // Fallback to polling if WebSocket fails
+       fallbackToPolling();
+     };
+     
+     socket.onerror = function(error) {
+       debug('WebSocket error occurred', true);
+       isWebSocketConnected = false;
+     };
+   } catch (error) {
+     debug(`Error creating WebSocket: ${error.message}`, true);
+     updateConnectionStatus('disconnected');
+     fallbackToPolling();
+   }
+ }
+ 
+ // Request update from server
+ function requestUpdate() {
+   if (!isWebSocketConnected) {
+     debug('Cannot request update: WebSocket not connected', true);
+     return;
+   }
+   
+   try {
+     socket.send(JSON.stringify({ type: 'requestUpdate' }));
+     debug('Update request sent via WebSocket');
+   } catch (error) {
+     debug(`Error requesting update: ${error.message}`, true);
+   }
+ }
+ 
+ // Process update from server
+ function processUpdate(data) {
+   debug('Processing update from server');
+   
+   // Update token usage
+   if (data.usage) {
+     updateTokenUsageUI(data.usage);
+   }
+   
+   // Update chats
+   if (data.chats) {
+     recentChats = data.chats; // Store for modal view
+     updateChatsUI(data.chats);
+   }
+ }
+ 
+ // Process extension response
+ function processExtendResponse(data) {
+   const extendMessage = document.getElementById('extendMessage');
+   
+   if (data.success) {
+     extendMessage.textContent = data.message || 'Token limit extended successfully!';
+     extendMessage.style.color = 'green';
+   } else {
+     extendMessage.textContent = `Error: ${data.error || 'Unknown error'}`;
+     extendMessage.style.color = 'red';
+   }
+   
+   // Request fresh data after extension
+   requestUpdate();
+ }
+
+ // Process clear database response
+ function processClearDatabaseResponse(data) {
+   const extendMessage = document.getElementById('extendMessage');
+   
+   if (data.success) {
+     extendMessage.textContent = data.message || 'Database cleared successfully!';
+     extendMessage.style.color = 'green';
+   } else {
+     extendMessage.textContent = `Error: ${data.error || 'Unknown error'}`;
+     extendMessage.style.color = 'red';
+   }
+   
+   // Request fresh data after database clear
+   requestUpdate();
+ }
+ 
+ // Fallback to polling mechanism
+ function fallbackToPolling() {
+   debug('Falling back to HTTP polling');
+   
+   // Initial poll
+   pollForUpdates();
+   
+   // Set up periodic polling until WebSocket reconnects
+   const pollingInterval = setInterval(() => {
+     if (isWebSocketConnected) {
+       clearInterval(pollingInterval);
+       debug('WebSocket reconnected, stopping polling');
+       return;
+     }
+     pollForUpdates();
+   }, FALLBACK_POLLING_INTERVAL);
+ }
+ 
+ // Poll for updates using HTTP API
+ async function pollForUpdates() {
+   debug('Polling for updates via HTTP API');
+   
+   try {
+     // Get usage stats
+     const usageResponse = await fetch(`${BASE_URL}/api/usage`);
+     if (usageResponse.ok) {
+       const usageData = await usageResponse.json();
+       updateTokenUsageUI(usageData);
+     }
+     
+     // Get chats
+     const chatsResponse = await fetch(`${BASE_URL}/api/chats?limit=20`);
+     if (chatsResponse.ok) {
+       const chatsData = await chatsResponse.json();
+       recentChats = chatsData.chats || [];
+       updateChatsUI(recentChats);
+     }
+     
+     debug('Poll update completed');
+   } catch (error) {
+     debug(`Polling failed: ${error.message}`, true);
+   }
+ }
+ 
+ // Update token usage UI
+ function updateTokenUsageUI(data) {
+   document.getElementById('totalTokens').textContent = data.totalTokensUsed?.toLocaleString() || '0';
+   document.getElementById('tokenLimit').textContent = data.limit?.toLocaleString() || '0';
+   
+   // Calculate remaining tokens
+   const remaining = data.limit - data.totalTokensUsed;
+   document.getElementById('remainingTokens').textContent = Math.max(0, remaining).toLocaleString();
+   
+   // Update progress bar
+   const percentage = (data.totalTokensUsed / data.limit) * 100;
+   const progressBar = document.getElementById('tokenProgress');
+   progressBar.style.width = `${Math.min(100, percentage)}%`;
+   progressBar.style.backgroundColor = percentage > 90 ? (percentage >= 100 ? '#e63757' : '#ffc107') : '#2c7be5';
+   
+   let percentageText = `${percentage.toFixed(1)}% of limit used`;
+   if (data.message) {
+     percentageText += ` - ${data.message}`;
+   }
+   
+   document.getElementById('tokenPercentage').textContent = percentageText;
+ }
+ 
+ // Update chats UI
+ function updateChatsUI(chats) {
+   const tbody = document.getElementById('chatHistory');
+   tbody.innerHTML = '';
+   
+   if (!chats || chats.length === 0) {
+     tbody.innerHTML = `
+       <tr>
+         <td colspan="6" style="text-align: center;">No chats found</td>
+       </tr>
+     `;
+     return;
+   }
+   
+   chats.forEach(chat => {
+     const row = document.createElement('tr');
+     
+     const timestamp = new Date(chat.timestamp).toLocaleString();
+     const tokensUsed = chat.tokens_used || chat.gemini_token_count || 0;
+     
+     row.innerHTML = `
+       <td>${timestamp}</td>
+       <td class="text-truncate">${escapeHtml(chat.user_input)}</td>
+       <td class="text-truncate">${escapeHtml(chat.response)}</td>
+       <td>${chat.model.split('/').pop()}</td>
+       <td>${tokensUsed.toLocaleString()}</td>
+       <td><button class="btn btn-primary view-chat" data-id="${chat.id}">View</button></td>
+     `;
+     
+     tbody.appendChild(row);
+   });
+   
+   // Add event listeners to view buttons
+   document.querySelectorAll('.view-chat').forEach(button => {
+     button.addEventListener('click', () => {
+       const chatId = button.getAttribute('data-id');
+       const chat = recentChats.find(c => c.id == chatId);
+       if (chat) {
+         showChatDetails(chat);
+       }
+     });
+   });
+ }
+ 
+ // Extend token limit via WebSocket
+ function extendTokenLimit() {
+   const amountInput = document.getElementById('extendAmount');
+   const extendMessage = document.getElementById('extendMessage');
+   const amountToExtend = parseInt(amountInput.value);
+   
+   extendMessage.textContent = '';
+   
+   if (isNaN(amountToExtend) || amountToExtend <= 0) {
+     extendMessage.textContent = 'Please enter a valid positive number of tokens.';
+     extendMessage.style.color = 'red';
+     return;
+   }
+   
+   if (amountToExtend > MAX_EXTENSION_AMOUNT) {
+     extendMessage.textContent = `Amount exceeds the maximum allowed per request (${MAX_EXTENSION_AMOUNT} tokens).`;
+     extendMessage.style.color = 'red';
+     return;
+   }
+   
+   debug(`Attempting to extend token limit by ${amountToExtend} tokens...`);
+   
+   if (isWebSocketConnected) {
+     try {
+       socket.send(JSON.stringify({
+         type: 'extendLimit',
+         amount: amountToExtend
+       }));
+       debug('Extend limit request sent via WebSocket');
+     } catch (error) {
+       debug(`WebSocket send error: ${error.message}`, true);
+       extendLimitAPI(amountToExtend); // Fallback to API
+     }
+   } else {
+     extendLimitAPI(amountToExtend); // Fallback to API
+   }
+ }
+
+ // Clear database via WebSocket
+ function clearDatabase() {
+   const extendMessage = document.getElementById('extendMessage');
+   
+   if (!confirm("Are you sure you want to clear the database? This will reset token usage to 0 and delete all chat history. This action cannot be undone.")) {
+     return;
+   }
+   
+   debug(`Attempting to clear database...`);
+   
+   if (isWebSocketConnected) {
+     try {
+       socket.send(JSON.stringify({
+         type: 'clearDatabase'
+       }));
+       debug('Clear database request sent via WebSocket');
+     } catch (error) {
+       debug(`WebSocket send error: ${error.message}`, true);
+       clearDatabaseAPI(); // Fallback to API
+     }
+   } else {
+     clearDatabaseAPI(); // Fallback to API
+   }
+ }
+ 
+ // Fallback to API for extending token limit
+ async function extendLimitAPI(amount) {
+   const extendMessage = document.getElementById('extendMessage');
+   
+   debug(`Using API fallback to extend limit by ${amount} tokens`);
+   
+   try {
+     const response = await fetch(`${BASE_URL}/api/admin/extend-limit`, {
+       method: 'POST',
+       headers: {
+         'Content-Type': 'application/json'
+       },
+       body: JSON.stringify({ amount: amount })
+     });
+     
+     const data = await response.json();
+     
+     if (response.ok && data.success) {
+       extendMessage.textContent = data.message || 'Token limit extended successfully!';
+       extendMessage.style.color = 'green';
+       pollForUpdates(); // Get updated data
+     } else {
+       extendMessage.textContent = `Error: ${data.error || 'Request failed'}`;
+       extendMessage.style.color = 'red';
+     }
+   } catch (error) {
+     debug(`API extend limit error: ${error.message}`, true);
+     extendMessage.textContent = `Error: ${error.message}`;
+     extendMessage.style.color = 'red';
+   }
+ }
+
+ // Fallback to API for clearing database
+ async function clearDatabaseAPI() {
+   const extendMessage = document.getElementById('extendMessage');
+   
+   debug(`Using API fallback to clear database`);
+   
+   try {
+     const response = await fetch(`${BASE_URL}/api/admin/clear-database`, {
+       method: 'POST',
+       headers: {
+         'Content-Type': 'application/json'
+       }
+     });
+     
+     const data = await response.json();
+     
+     if (response.ok && data.success) {
+       extendMessage.textContent = data.message || 'Database cleared successfully!';
+       extendMessage.style.color = 'green';
+       pollForUpdates(); // Get updated data
+     } else {
+       extendMessage.textContent = `Error: ${data.error || 'Request failed'}`;
+       extendMessage.style.color = 'red';
+     }
+   } catch (error) {
+     debug(`API clear database error: ${error.message}`, true);
+     extendMessage.textContent = `Error: ${error.message}`;
+     extendMessage.style.color = 'red';
+   }
+ }
+ 
+ // Check API connectivity
+ async function checkApiConnectivity() {
+   debug(`Checking API connectivity to ${BASE_URL}...`);
+   
+   try {
+     const response = await fetch(`${BASE_URL}/api/health`);
+     
+     if (!response.ok) {
+       throw new Error(`Health check failed with status: ${response.status}`);
+     }
+     
+     const data = await response.json();
+     
+     if (data.status === 'ok') {
+       debug(`Server is running. Gemini API key: ${data.geminiApiKeyConfigured ? 'Configured' : 'NOT CONFIGURED'}`);
+       return true;
+     } else {
+       debug(`Server reported an issue: ${data.message}`, true);
+       return false;
+     }
+   } catch (error) {
+     debug(`API connectivity check failed: ${error.message}`, true);
+     return false;
+   }
+ }
+ 
+ // Show chat details in modal
+ function showChatDetails(chat) {
+   const modal = document.getElementById('chatModal');
+   const details = document.getElementById('chatDetails');
+   
+   const timestamp = new Date(chat.timestamp).toLocaleString();
+   
+   // Handle both new schema (tokens_used) and old schema (gemini_token_count)
+   const tokensUsed = chat.tokens_used || chat.gemini_token_count || 'N/A';
+   
+   details.innerHTML = `
+     <h3>Timestamp</h3>
+     <p>${timestamp}</p>
+     
+     <h3>Model</h3>
+     <p>${chat.model}</p>
+     
+     <h3>Parameters</h3>
+     <p>Temperature: ${chat.temperature}, Max Tokens: ${chat.max_tokens || 'N/A'}</p>
+     
+     <h3>Token Metrics</h3>
+     <p>Tokens Used: ${tokensUsed}</p>
+     
+     <h3>User Query</h3>
+     <pre>${escapeHtml(chat.user_input)}</pre>
+     
+     <h3>Response</h3>
+     <pre>${escapeHtml(chat.response)}</pre>
+   `;
+   
+   modal.style.display = 'block';
+ }
+ 
+ // Helper function to escape HTML
+ function escapeHtml(unsafe) {
+   if (!unsafe) return '';
+   return unsafe
+     .replace(/&/g, "&amp;")
+     .replace(/</g, "&lt;")
+     .replace(/>/g, "&gt;")
+     .replace(/"/g, "&quot;")
+     .replace(/'/g, "&#039;");
+ }
+
+ // Initialize the dashboard
+ document.addEventListener('DOMContentLoaded', async () => {
+   debug('DOM loaded, initializing admin dashboard');
+   
+   // Check API connectivity
+   const isApiAvailable = await checkApiConnectivity();
+   
+   if (isApiAvailable) {
+     // Connect WebSocket
+     connectWebSocket();
+   } else {
+     // Show error state
+     updateConnectionStatus('disconnected');
+     document.getElementById('totalTokens').textContent = 'API Error';
+     document.getElementById('tokenLimit').textContent = 'API Error';
+     document.getElementById('remainingTokens').textContent = 'API Error';
+     document.getElementById('chatHistory').innerHTML = `
+       <tr>
+         <td colspan="6" style="text-align: center;">Cannot connect to API server</td>
+       </tr>
+     `;
+     
+     // Disable controls
+     document.getElementById('extendLimitBtn').disabled = true;
+     document.getElementById('extendAmount').disabled = true;
+     document.getElementById('clearDbBtn').disabled = true;
+     document.getElementById('extendMessage').textContent = 'API server is unreachable. Cannot extend limit or clear database.';
+     document.getElementById('extendMessage').style.color = 'red';
+   }
+   
+   // Set up event listeners
+   document.getElementById('extendLimitBtn').addEventListener('click', extendTokenLimit);
+   document.getElementById('clearDbBtn').addEventListener('click', clearDatabase);
+   
+   document.getElementById('closeModal').addEventListener('click', () => {
+     document.getElementById('chatModal').style.display = 'none';
+   });
+   
+   // Close modal when clicking outside content
+   window.addEventListener('click', (event) => {
+     const modal = document.getElementById('chatModal');
+     if (event.target === modal) {
+       modal.style.display = 'none';
+     }
+   });
+ });
+</script> </body>
+</html>
